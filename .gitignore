@@ -1,0 +1,14 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.xlsx
+*.png
+*.csv
+*.pdf
+*.gsheet
+.DS_Store
+*_ANOVA_and_plots/
+*_plots/
+OLD/
+Archive*/

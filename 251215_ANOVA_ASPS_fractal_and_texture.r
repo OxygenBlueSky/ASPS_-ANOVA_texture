@@ -391,7 +391,6 @@ cat("Excluded entire Exp 4 (mixed potencies):", initial_n - nrow(df), "observati
 #     filter(experiment_number != 2)
 # }
 
-
 # Exclude reference plates based on position swap between exp 1 and exp 2-10
 # Exp 1 (DM): reference at position 4, so exclude position 8
 # Exp 2-10: reference at position 8, so exclude position 4

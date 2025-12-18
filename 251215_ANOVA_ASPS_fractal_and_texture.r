@@ -4,12 +4,12 @@
 # Original: 2023.06.06 (Paul)
 # Remade: 2025.09.30 (Paul)
 # Updated: 2025.10.03 - Added potency decoding functionality
-# Updated: 2025.11.03 15:30 CET - Added outer loop for 3 potency filtering scenarios
-# Updated: 2025.11.03 15:45 CET - Added Cohen's d effect size calculations
-# Updated: 2025.11.26 16:00 CET - Integrated 17-scenario analysis with combined ANOVA + plotting
-# Updated: 2025.11.28 15:30 CET - Re-commented with pedagogical style guide
-# Updated: 2025.11.28 16:00 CET - Added ratio plot (Stannum/Lactose) with Delta method SE
-# Updated: Integrated fractal/texture version: 2025.12.15
+# Updated: 2025.11.03 - Added outer loop for 3 potency filtering scenarios
+# Updated: 2025.11.03 - Added Cohen's d effect size calculations
+# Updated: 2025.11.26 - Integrated 17-scenario analysis with combined ANOVA + plotting
+# Updated: 2025.11.28 - Re-commented with pedagogical style guide
+# Updated: 2025.11.28 - Added ratio plot (Stannum/Lactose) with Delta method SE
+# Updated: 2025.12.15 - Integrated fractal/texture version
 #
 # This script can analyze either texture parameters OR fractal parameters
 # from biocrystallization experiments (ASPS 1-10). Toggle analysis_type in 
@@ -19,10 +19,10 @@
 #===== User settings (edit these) ==========================================
 
 # Analysis type: "texture" or "fractal"
-analysis_type <- "fractal"
+analysis_type <- "texture"
 
 # Scenario control
-run_all_scenarios <- FALSE  # FALSE = 6-potency only (fast), TRUE = all 17 scenarios
+run_all_scenarios <- TRUE  # FALSE = 6-potency only (fast), TRUE = all 17 scenarios
 
 # Data-specific parameter configuration
 if (analysis_type == "texture") {
@@ -297,7 +297,7 @@ if (analysis_type == "texture") {
   
   # Step 2: Load fractal data
   cat("\nLoading fractal data...\n")
-  df_raw <- read.delim(here("20251215_fractal_data_ASPS_1-10 copy.csv"))
+  df_raw <- read.delim(here("20251217_fractal_data_ASPS_1-10 copy.csv"))
   
   # Rename column 6 a.o. from cryptic FracLac name to readable parameter name
   colnames(df_raw)[6] <- "db_mean"

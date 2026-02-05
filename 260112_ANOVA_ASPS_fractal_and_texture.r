@@ -36,7 +36,7 @@ if (analysis_type == "texture") {
     "diagonal_moment", "difference_energy", "difference_entropy",
     "energy", "entropy", "inertia", "inverse_different_moment",
     "kappa", "maximum_probability", "sum_energy", 
-    "sum_entropy", "sum_variance"
+    "sum_entropy", "sum_variance" 
   )
   
   # Texture values are very small, scale for numerical stability

@@ -70,6 +70,7 @@ library(plotrix)
 library(gridExtra)
 library(cowplot)
 library(emmeans)
+library(GGally)    # For correlation matrix plots (ggpairs)
 
 # Create date string for output filenames (format: YYYYMMDD)
 date <- Sys.Date() 
@@ -1748,6 +1749,255 @@ if (length(analysis_vars) > 1) {
 }
 
 
+#===== Correlation Matrix Plots ============================================
+#
+# Create three correlation matrices (ALL DATA / AS ONLY / JZ ONLY) showing
+# pairwise relationships between all 15 texture parameters.
+#
+# Plot structure:
+#   - Upper triangle: Pearson correlation coefficients with green color gradient
+#   - Lower triangle: Scatterplots of individual observations
+#   - Diagonal: Histograms showing parameter distributions
+#
+# This analysis helps identify:
+#   1. Which texture parameters are redundant (highly correlated)
+#   2. Which parameters capture independent information (low correlation)
+#   3. Whether correlation patterns differ between experimenters (AS vs JZ)
+
+cat("\n")
+cat("################################################################################\n")
+cat("CREATING CORRELATION MATRIX PLOTS\n")
+cat("################################################################################\n\n")
+
+cat("Creating correlation plots for all 15 texture parameters\n")
+cat("Three plots: ALL DATA, AS ONLY, JZ ONLY\n\n")
+
+
+# Parameter ordering for correlation matrix display
+# This custom order groups conceptually related parameters together
+# (different from alphabetical order used in all_params)
+param_order <- c(
+  "cluster_shade",           # Cluster-based features (1-2)
+  "diagonal_moment",
+  "maximum_probability",     # Probability-based features (3-4)
+  "sum_energy",
+  "cluster_prominence",      # Additional cluster feature (5)
+  "entropy",                 # Entropy features (6-7)
+  "kappa",
+  "energy",                  # Energy features (8-10)
+  "correlation",
+  "difference_energy",
+  "difference_entropy",      # Difference features (11-12)
+  "inertia",                 # Moment-based features (13)
+  "inverse_different_moment",
+  "sum_entropy",             # Sum features (14-15)
+  "sum_variance"
+)
+
+cat("Parameter order for visualization:\n")
+cat(paste(param_order, collapse = ", "), "\n\n")
+
+
+# upper_cor: Custom function for upper triangle panels in ggpairs correlation matrix
+#
+# This function calculates the Pearson correlation coefficient between two variables
+# and displays it with a green color gradient that reflects correlation strength.
+#
+# Color scheme:
+#   - Light green (#90EE90): weak correlation (|r| ≈ 0)
+#   - Dark green (#006400): strong correlation (|r| ≈ 1)
+#   - Gradient is based on ABSOLUTE value (ignores sign)
+#
+# Args:
+#   data: data frame with the variables
+#   mapping: aes mapping from ggpairs (contains x and y column mappings)
+#   ...: additional arguments passed to ggally_text
+#
+# Returns:
+#   A ggplot layer with the correlation value as text
+
+upper_cor <- function(data, mapping, ...) {
+
+  # Extract the x and y variables from the aesthetic mapping
+  # eval_data_col is a GGally helper that evaluates column references
+  x <- eval_data_col(data, mapping$x)
+  y <- eval_data_col(data, mapping$y)
+
+  # Calculate Pearson correlation coefficient
+  # use = "complete.obs" removes NA values pairwise
+  cor_val <- cor(x, y, use = "complete.obs")
+
+  # Compute green color gradient based on absolute correlation strength
+  # Map |r| from [0, 1] to color intensity from light to dark green
+  abs_cor <- abs(cor_val)
+
+  # Light green starts at RGB(144, 238, 144) = #90EE90
+  # Dark green ends at RGB(0, 100, 0) = #006400
+  # Linear interpolation: intensity decreases as |r| increases
+  red_component <- round(144 * (1 - abs_cor))      # 144 → 0
+  green_component <- round(238 - 138 * abs_cor)    # 238 → 100
+  blue_component <- round(144 * (1 - abs_cor))     # 144 → 0
+
+  color_hex <- sprintf("#%02X%02X%02X",
+                       red_component,
+                       green_component,
+                       blue_component)
+
+  # Display correlation value as text with computed color
+  # Format to 2 decimal places (e.g., 0.85, -0.42)
+  # Return plot with clean background (no gridlines)
+  ggplot(data, mapping) +
+    annotate("text", x = 0.5, y = 0.5,
+             label = sprintf("%.2f", cor_val),
+             color = color_hex,
+             size = 6) +              # Large text for readability
+    xlim(0, 1) + ylim(0, 1) +         # Explicit limits prevent text clipping
+    theme_void()                      # Removes all gridlines and background elements
+}
+
+
+# lower_scatter: Custom function for lower triangle scatterplots
+# Shows raw data points for the parameter pair
+# Explicitly removes gridlines to ensure clean appearance
+# Args:
+#   data: data frame with the variables
+#   mapping: aes mapping from ggpairs (contains x and y column mappings)
+# Returns:
+#   A ggplot layer with scatterplot and no gridlines
+
+lower_scatter <- function(data, mapping, ...) {
+  ggplot(data, mapping) +
+    geom_point(alpha = 0.2, size = 0.5, color = "gray40") +
+    theme_minimal() +
+    theme(
+      panel.grid = element_blank(),   # CRITICAL: remove all gridlines
+      axis.text = element_blank(),
+      axis.ticks = element_blank()
+    )
+}
+
+
+# diag_label: Custom function for diagonal panels
+# Displays the parameter name in large, bold text instead of a histogram
+# This makes it easier to identify which parameter is on each row/column
+# Args:
+#   data: data frame with the variables
+#   mapping: aes mapping from ggpairs (contains column name)
+# Returns:
+#   A ggplot layer with the parameter name as centered text
+
+diag_label <- function(data, mapping, ...) {
+  # Extract variable name from the aesthetic mapping
+  var_name <- as.character(mapping$x)[2]
+
+  # Replace underscores with newlines to wrap long names
+  # e.g., "cluster_shade" becomes "cluster\nshade" (2 lines)
+  # "inverse_different_moment" becomes "inverse\ndifferent\nmoment" (3 lines)
+  display_name <- gsub("_", "\n", var_name)
+
+  # Create clean panel with parameter name
+  ggplot(data, mapping) +
+    annotate("text", x = 0.5, y = 0.5,
+             label = display_name,       # Use wrapped name
+             size = 2.5,                 # Smaller size fits better in panels
+             fontface = "bold",
+             lineheight = 0.8) +         # Tight line spacing for wrapped names
+    xlim(0, 1) + ylim(0, 1) +            # Explicit limits prevent text clipping
+    theme_void()
+}
+
+
+cat("Generating correlation plot 1/3: ALL DATA\n")
+
+# Create correlation matrix plot for ALL DATA
+# Uses df_filtered which already excludes Exp 4, outliers, and reference plates
+df_all_ordered <- df_filtered[, param_order]
+
+plot_corr_all <- ggpairs(
+  df_all_ordered,
+  upper = list(continuous = upper_cor),       # Custom correlation display
+  lower = list(continuous = lower_scatter),   # Scatterplots
+  diag = list(continuous = diag_label)        # Parameter names (instead of histograms)
+) +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_blank(),             # Hide strip labels (names now on diagonal)
+    panel.spacing = unit(0.1, "lines")        # Reduce spacing between panels
+  ) +
+  labs(title = "Correlation Matrix: All Data (Texture Parameters)")
+
+
+cat("Generating correlation plot 2/3: AS ONLY\n")
+
+# Create correlation matrix plot for AS ONLY (Experiments 1-5)
+# Subset to ASPS_AS before reordering columns
+df_as_ordered <- df_filtered[df_filtered$experiment_name == "ASPS_AS", param_order]
+
+plot_corr_as <- ggpairs(
+  df_as_ordered,
+  upper = list(continuous = upper_cor),
+  lower = list(continuous = lower_scatter),
+  diag = list(continuous = diag_label)
+) +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_blank(),
+    panel.spacing = unit(0.1, "lines")
+  ) +
+  labs(title = "Correlation Matrix: AS Only (Texture Parameters)")
+
+
+cat("Generating correlation plot 3/3: JZ ONLY\n")
+
+# Create correlation matrix plot for JZ ONLY (Experiments 6-10)
+# Subset to ASPS_JZ before reordering columns
+df_jz_ordered <- df_filtered[df_filtered$experiment_name == "ASPS_JZ", param_order]
+
+plot_corr_jz <- ggpairs(
+  df_jz_ordered,
+  upper = list(continuous = upper_cor),
+  lower = list(continuous = lower_scatter),
+  diag = list(continuous = diag_label)
+) +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_blank(),
+    panel.spacing = unit(0.1, "lines")
+  ) +
+  labs(title = "Correlation Matrix: JZ Only (Texture Parameters)")
+
+
+# Save all three correlation plots as PNG files
+# Large dimensions (40×40 cm) ensure readability with 15×15 parameter grid
+# 300 dpi provides publication-quality resolution
+
+cat("\nSaving correlation plots to output folder...\n")
+
+output_file_all <- file.path(output_folder,
+                             paste0(date2, "_texture_correlation_ALL.png"))
+ggsave(filename = output_file_all,
+       plot = plot_corr_all,
+       width = 40, height = 40, dpi = 300, units = "cm")
+cat(sprintf("  Saved: %s\n", basename(output_file_all)))
+
+output_file_as <- file.path(output_folder,
+                            paste0(date2, "_texture_correlation_AS.png"))
+ggsave(filename = output_file_as,
+       plot = plot_corr_as,
+       width = 40, height = 40, dpi = 300, units = "cm")
+cat(sprintf("  Saved: %s\n", basename(output_file_as)))
+
+output_file_jz <- file.path(output_folder,
+                            paste0(date2, "_texture_correlation_JZ.png"))
+ggsave(filename = output_file_jz,
+       plot = plot_corr_jz,
+       width = 40, height = 40, dpi = 300, units = "cm")
+cat(sprintf("  Saved: %s\n", basename(output_file_jz)))
+
+cat("\nCorrelation matrix plots completed successfully\n")
+cat("================================================================================\n\n")
+
+
 #===== Final summary =======================================================
 
 cat("################################################################################\n")
@@ -1761,9 +2011,12 @@ cat(sprintf("  - %d scenario plot PNG files\n", n_scenarios_run))
 cat(sprintf("  - 1 Post-hoc Excel file\n"))
 if (length(analysis_vars) > 1) {
   cat(sprintf("  - 1 Ratio plot PNG file\n"))
-  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 2))
+}
+cat(sprintf("  - 3 Correlation matrix PNG files (ALL/AS/JZ)\n"))
+if (length(analysis_vars) > 1) {
+  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 5))
 } else {
-  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 1))
+  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 4))
 }
 
 if (!run_all_scenarios) {

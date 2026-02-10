@@ -925,8 +925,12 @@ create_plot <- function(df_filtered, scenario) {
                                paste0(date2, "_", analysis_type, "_ASPS_plot_",
                                       scenario$filename_part, ".png"))
 
-  # Calculate height dynamically based on number of parameters (8.75 cm per parameter)
-  plot_height <- 30 + n_params * 8.75
+  # Calculate height to keep individual subplot dimensions constant
+  # Each parameter row needs consistent height for comparable subplot appearance
+  # Calibrated from 4-parameter layout: (65 total - 5 margin/title) / 4 rows = 15 cm per row
+  height_per_param_row <- 8.2
+  title_and_margin_height <- 5
+  plot_height <- title_and_margin_height + n_params * height_per_param_row
 
   ggsave(
     filename = output_filename,
@@ -1011,6 +1015,20 @@ cat("\n\n")
 cat("################################################################################\n")
 cat("POST HOC TESTS: Full 6-potency dataset only\n")
 cat("################################################################################\n\n")
+
+# Define desired order for post-hoc triangular tables
+# This controls how remedies appear in rows/columns of the pairwise comparison matrices
+posthoc_order <- c("Lactose", "Sulphur", "Ars.Album", "Mercury", "Silicea", "Stannum")
+
+# Reorder factor levels to match desired post-hoc display order
+# The factor() function with levels= parameter sets a custom order for categorical variables
+# Without specifying levels=, R defaults to alphabetical ordering
+# With levels=, you explicitly define the order: first element in levels= appears first, etc.
+# This ordering will affect:
+#   - Triangular matrix row/column arrangement (first in order = first row/column)
+#   - Excel output sheet organization
+#   - All pairwise comparison displays
+df$potency_decoded <- factor(df$potency_decoded, levels = posthoc_order)
 
 
 # compute_emmeans_contrasts: Fits ANOVA and extracts pairwise comparison results
@@ -1648,7 +1666,7 @@ if (length(analysis_vars) > 1) {
         breaks = 1:10,
         labels = as.character(1:10),
         limits = c(0.5, 10.5),
-        name = "Experiment"
+        name = "Experiment Number"
       ) +
       
       # Y-axis: parameter name as label
@@ -1665,31 +1683,8 @@ if (length(analysis_vars) > 1) {
         plot.margin = margin(t = 5, r = 10, b = 5, l = 10)
       )
     
-    # Add section delimiter lines and labels ("AS", "JZ") above data
-    y_max <- max(plot_data$ratio + plot_data$se_ratio, na.rm = TRUE)
-    y_min <- min(plot_data$ratio - plot_data$se_ratio, na.rm = TRUE)
-    y_range <- y_max - y_min
-    label_y <- y_max + 0.08 * y_range
-    line_y <- y_max + 0.02 * y_range
-    
-    # Expand y-axis to make room for labels
-    p <- p + 
-      coord_cartesian(
-        ylim = c(y_min - 0.05 * y_range, y_max + 0.15 * y_range),
-        clip = "off"
-      )
-    
-    # Add horizontal lines under "AS" and "JZ" labels
-    p <- p +
-      annotate("segment", x = 1, xend = 5, y = line_y, yend = line_y,
-               color = "gray40", linewidth = 0.5) +
-      annotate("segment", x = 6, xend = 10, y = line_y, yend = line_y,
-               color = "gray40", linewidth = 0.5) +
-      annotate("text", x = 3, y = label_y, label = "AS",
-               size = 3.5, fontface = "bold", color = "gray30") +
-      annotate("text", x = 8, y = label_y, label = "JZ",
-               size = 3.5, fontface = "bold", color = "gray30")
-    
+    # No section delimiter lines - color difference on dots is sufficient
+
     plot_list[[i]] <- p
   }
   
@@ -1722,28 +1717,28 @@ if (length(analysis_vars) > 1) {
     hjust = 0.5
   )
   
-  # Calculate heights based on number of parameters
+  # Calculate heights based on number of parameters (tripled for better spacing)
   n_params <- length(analysis_vars)
-  panel_heights <- rep(2.5, n_params)
-  
+  panel_heights <- rep(7.5, n_params)  # Tripled from 2.5 to 7.5
+
   combined_plot <- gridExtra::arrangeGrob(
     title_grob,
     do.call(arrangeGrob, c(plot_list, list(ncol = 1))),
     legend_grob,
     ncol = 1,
-    heights = c(0.8, sum(panel_heights), 0.5)
+    heights = c(2.0, sum(panel_heights), 0.8)  # Increased title and legend spacing
   )
-  
+
   # Save plot
   output_filename_ratio <- file.path(output_folder,
-                                     paste0(date2, "_", analysis_type, 
+                                     paste0(date2, "_", analysis_type,
                                             "_ratio_plot_Stannum_Lactose.png"))
-  
+
   ggsave(
     filename = output_filename_ratio,
     plot = combined_plot,
     width = 14,
-    height = 0.8 + sum(panel_heights) + 0.5,
+    height = 2.0 + sum(panel_heights) + 0.8,  # Adjusted for new heights
     dpi = 300,
     units = "cm"
   )

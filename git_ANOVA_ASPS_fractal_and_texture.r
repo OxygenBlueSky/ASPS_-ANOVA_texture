@@ -22,13 +22,13 @@
 analysis_type <- "texture"
 
 # Scenario control
-run_all_scenarios <- FALSE  # FALSE = 6-potency only (fast), TRUE = all 17 scenarios
+run_all_scenarios <- TRUE  # FALSE = 6-potency only (fast), TRUE = all 17 scenarios
 
 # Data-specific parameter configuration
 if (analysis_type == "texture") {
   
   # Five focal parameters for detailed plotting (pre-selected from screening)
-  analysis_vars <- c("cluster_shade", "energy", "entropy", "maximum_probability", "kappa") 
+  analysis_vars <- c("cluster_shade", "entropy", "maximum_probability", "sum_energy", "kappa") 
   
   # All 15 texture parameters for comprehensive Excel ANOVA summary
   all_params <- c(
@@ -69,6 +69,7 @@ library(ggplot2)
 library(plotrix)
 library(gridExtra)
 library(cowplot)
+library(patchwork) # For aligned multi-panel plot layouts
 library(emmeans)
 library(GGally)    # For correlation matrix plots (ggpairs)
 
@@ -480,12 +481,12 @@ potency_hierarchy <- c("Lactose", "Stannum", "Silicea", "Sulphur", "Ars.Album", 
 
 # Fixed colors ensure each potency looks the same across all plots for easy comparison
 potency_colors <- c(
-  "Lactose" = "#1B9E77",
-  "Stannum" = "#D95F02",
-  "Silicea" = "#7570B3",
-  "Sulphur" = "#E7298A",
-  "Ars.Album" = "#66A61E",
-  "Mercury" = "#E6AB02"
+  "Lactose" = "#51CFFD",
+  "Stannum" = "#FFC72C",
+  "Silicea" = "#E7298A",
+  "Sulphur" = "#9100AB",
+  "Ars.Album" = "#00BD5F",
+  "Mercury" = "#919191"
 )
 
 
@@ -835,7 +836,7 @@ create_plot <- function(df_filtered, scenario) {
   }
   
   experimenters <- c("ASPS_AS", "ASPS_JZ")
-  experimenter_labels <- c("AS (Experiments 1-5)", "JZ (Experiments 6-10)")
+  experimenter_labels <- c("2016 data (Experiments 1-5)", "2022 data (Experiments 6-10)")
   
   plot_list <- list()
   plot_counter <- 1
@@ -878,7 +879,8 @@ create_plot <- function(df_filtered, scenario) {
         geom_point(size = 2.5, position = position_dodge(width = dodge_width)) +
         scale_x_continuous(breaks = unique(as.numeric(as.character(plot_data$experiment_number)))) +
         scale_y_continuous(limits = y_limits[[var]]) +
-        scale_color_manual(values = potency_colors, name = "Remedy") +
+        # Sort legend entries by potency_hierarchy order
+        scale_color_manual(values = potency_colors, breaks = potency_hierarchy, name = "Remedy") +
         labs(
           title = experimenter_label,
           x = "Experiment Number",
@@ -886,13 +888,35 @@ create_plot <- function(df_filtered, scenario) {
         ) +
         theme_bw() +
         theme(
-          plot.title = element_text(size = 11, face = "bold"),
-          axis.title = element_text(size = 10),
-          axis.text = element_text(size = 9),
-          legend.title = element_text(size = 9),
-          legend.text = element_text(size = 8),
-          plot.caption = element_text(size = 8, hjust = 0)
+          plot.title = element_text(size = 15, face = "bold"),
+          axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.title = element_text(size = 13),
+          legend.text = element_text(size = 12),
+          plot.caption = element_text(size = 12, hjust = 0),
+          # Remove vertical gridlines
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank()
         )
+
+      # Left column (AS/2016): hide legend, small right margin
+      if (exp_idx == 1) {
+        p <- p + theme(
+          legend.position = "none",
+          plot.margin = margin(t = 5, r = 2, b = 5, l = 5)
+        )
+      }
+
+      # Right column (JZ/2022): remove y-axis elements;
+      # patchwork aligns panels automatically so widths stay equal
+      if (exp_idx == 2) {
+        p <- p + theme(
+          axis.title.y = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          plot.margin = margin(t = 5, r = 5, b = 5, l = 2)
+        )
+      }
       
       # Add ratio caption for 2-potency scenarios
       if (show_ratios) {
@@ -912,14 +936,15 @@ create_plot <- function(df_filtered, scenario) {
     }
   }
   
-  # Arrange all plots in n×2 grid (n = number of parameters)
+  # Arrange all plots in n×2 grid using patchwork
+  # patchwork aligns panels automatically, keeping equal widths and minimal gap
   n_params <- length(analysis_vars)
-  grid_plot <- grid.arrange(
-    grobs = plot_list,
-    nrow = n_params,
-    ncol = 2,
-    top = paste0("ASPS ", toupper(analysis_type), " Analysis: ", scenario$name)
-  )
+
+  grid_plot <- wrap_plots(plot_list, ncol = 2, nrow = n_params) +
+    plot_annotation(
+      title = paste0("ASPS ", toupper(analysis_type), " Analysis: ", scenario$name),
+      theme = theme(plot.title = element_text(face = "bold", size = 18, hjust = 0.5))
+    )
 
   # Save to PNG file
   output_filename <- file.path(output_folder,
@@ -1658,10 +1683,10 @@ if (length(analysis_vars) > 1) {
       # Color scale
       scale_color_manual(
         values = c("ASPS_AS" = color_as, "ASPS_JZ" = color_jz),
-        labels = c("ASPS_AS" = "AS (Exp 1-5)", "ASPS_JZ" = "JZ (Exp 6-10)"),
-        name = "Experimenter"
+        labels = c("ASPS_AS" = "2016 data (Exp 1-5)", "ASPS_JZ" = "2022 data (Exp 6-10)"),
+        name = "Dataset"
       ) +
-      
+
       # X-axis: show all experiment numbers including missing exp 4
       scale_x_continuous(
         breaks = 1:10,
@@ -1694,8 +1719,8 @@ if (length(analysis_vars) > 1) {
     geom_point(size = 2.5) +
     scale_color_manual(
       values = c("ASPS_AS" = color_as, "ASPS_JZ" = color_jz),
-      labels = c("ASPS_AS" = "AS (Exp 1-5)", "ASPS_JZ" = "JZ (Exp 6-10)"),
-      name = "Experimenter"
+      labels = c("ASPS_AS" = "2016 data (Exp 1-5)", "ASPS_JZ" = "2022 data (Exp 6-10)"),
+      name = "Dataset"
     ) +
     guides(color = guide_legend(override.aes = list(size = 3))) +
     theme_bw() +
@@ -1944,7 +1969,7 @@ plot_corr_as <- ggpairs(
     strip.text = element_blank(),
     panel.spacing = unit(0.1, "lines")
   ) +
-  labs(title = "Correlation Matrix: AS Only (Texture Parameters)")
+  labs(title = "Correlation Matrix: 2016 data Only (Texture Parameters)")
 
 
 cat("Generating correlation plot 3/3: JZ ONLY\n")
@@ -1964,7 +1989,7 @@ plot_corr_jz <- ggpairs(
     strip.text = element_blank(),
     panel.spacing = unit(0.1, "lines")
   ) +
-  labs(title = "Correlation Matrix: JZ Only (Texture Parameters)")
+  labs(title = "Correlation Matrix: 2022 data Only (Texture Parameters)")
 
 
 # Save all three correlation plots as PNG files
@@ -1998,6 +2023,113 @@ cat("\nCorrelation matrix plots completed successfully\n")
 cat("================================================================================\n\n")
 
 
+#===== 3D scatter plot =====================================================
+# Interactive 3D scatter plot of three user-chosen parameters.
+# Points are colored by potency (same as other plots) and shaped by
+# experimenter: circles for AS (exp 1-5), triangles for JZ (exp 6-10).
+# Uses plotly for interactive rotation/zoom; also saves a static PNG snapshot.
+
+cat("================================================================================\n")
+cat("3D SCATTER PLOT\n")
+cat("================================================================================\n\n")
+
+library(plotly)
+
+# --- User settings for 3D plot ---
+# Pick any 3 parameters available in df (column names)
+scatter3d_x <- "entropy"
+scatter3d_y <- "maximum_probability"
+scatter3d_z <- "cluster_shade"
+
+cat(sprintf("  X-axis: %s\n", scatter3d_x))
+cat(sprintf("  Y-axis: %s\n", scatter3d_y))
+cat(sprintf("  Z-axis: %s\n", scatter3d_z))
+
+# Plotly shape codes: circle = "circle", triangle-up = "diamond"
+# (plotly 3D supports limited marker symbols; diamond reads well as triangle-like)
+# Using distinct symbols so AS vs JZ is clear even in greyscale.
+shape_map <- c("ASPS_AS" = "circle", "ASPS_JZ" = "diamond")
+
+# Build the 3D scatter plot one potency at a time so each gets its own
+# legend entry with the correct color and shape combinations
+fig <- plot_ly()
+
+for (pot in names(potency_colors)) {
+
+  for (exp_name in c("ASPS_AS", "ASPS_JZ")) {
+
+    # Subset to this potency + experimenter combination
+    sub <- df %>%
+      filter(potency_decoded == pot, experiment_name == exp_name)
+
+    if (nrow(sub) == 0) next
+
+    # Short label for dataset
+    exp_label <- ifelse(exp_name == "ASPS_AS", "2016", "2022")
+
+    fig <- fig %>%
+      add_trace(
+        data = sub,
+        x = ~get(scatter3d_x),
+        y = ~get(scatter3d_y),
+        z = ~get(scatter3d_z),
+        type = "scatter3d",
+        mode = "markers",
+        marker = list(
+          size = 3,
+          color = potency_colors[[pot]],
+          symbol = shape_map[[exp_name]],
+          opacity = 0.7
+        ),
+        # Legend shows "Potency (experimenter)" e.g. "Lactose (AS)"
+        name = paste0(pot, " (", exp_label, ")"),
+        hoverinfo = "text",
+        text = ~paste0(
+          "Potency: ", pot, "\n",
+          "Exp: ", experiment_number, " (", exp_label, ")\n",
+          scatter3d_x, ": ", round(get(scatter3d_x), 4), "\n",
+          scatter3d_y, ": ", round(get(scatter3d_y), 4), "\n",
+          scatter3d_z, ": ", round(get(scatter3d_z), 4)
+        )
+      )
+  }
+}
+
+# Layout: axis labels, title, legend position
+fig <- fig %>%
+  layout(
+    title = paste0("3D Scatter: ", scatter3d_x, " vs ", scatter3d_y, " vs ", scatter3d_z),
+    scene = list(
+      xaxis = list(title = scatter3d_x),
+      yaxis = list(title = scatter3d_y),
+      zaxis = list(title = scatter3d_z)
+    ),
+    legend = list(
+      title = list(text = "Potency (Dataset)"),
+      itemsizing = "constant"
+    )
+  )
+
+# Display the interactive plot in the viewer
+print(fig)
+
+# Save as static PNG (requires the orca or kaleido engine for plotly export;
+# falls back gracefully with a message if not available)
+output_file_3d <- file.path(output_folder,
+                            paste0(date2, "_3D_scatter_",
+                                   scatter3d_x, "_", scatter3d_y, "_", scatter3d_z, ".html"))
+tryCatch({
+  htmlwidgets::saveWidget(fig, file = output_file_3d, selfcontained = TRUE)
+  cat(sprintf("  Saved interactive 3D plot: %s\n", basename(output_file_3d)))
+}, error = function(e) {
+  cat(sprintf("  Could not save HTML widget: %s\n", e$message))
+  cat("  Install htmlwidgets if needed: install.packages('htmlwidgets')\n")
+})
+
+cat("\n3D scatter plot completed successfully\n")
+cat("================================================================================\n\n")
+
+
 #===== Final summary =======================================================
 
 cat("################################################################################\n")
@@ -2013,10 +2145,11 @@ if (length(analysis_vars) > 1) {
   cat(sprintf("  - 1 Ratio plot PNG file\n"))
 }
 cat(sprintf("  - 3 Correlation matrix PNG files (ALL/AS/JZ)\n"))
+cat(sprintf("  - 1 Interactive 3D scatter plot (HTML)\n"))
 if (length(analysis_vars) > 1) {
-  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 5))
+  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 6))
 } else {
-  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 4))
+  cat(sprintf("  TOTAL: %d files\n", n_scenarios_run * 2 + 5))
 }
 
 if (!run_all_scenarios) {

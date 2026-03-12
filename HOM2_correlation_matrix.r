@@ -44,16 +44,26 @@ upper_cor <- function(data, mapping, ...) {
   ggplot(data, mapping) +
     annotate("text", x = 0.5, y = 0.5,
              label = sprintf("%.2f", cor_val),
-             color = color_hex, size = 6) +
+             color = color_hex, size = 8) +
     xlim(0, 1) + ylim(0, 1) +
     theme_void()
 }
 
-# lower_scatter: Lower triangle - scatterplots
+# lower_scatter: Lower triangle - scatterplots (gray, or colored by group)
 lower_scatter <- function(data, mapping, ...) {
-  ggplot(data, mapping) +
-    geom_point(alpha = 0.2, size = 0.5, color = "gray40") +
-    theme_minimal() +
+  p <- ggplot(data, mapping)
+
+  # If colour mapping is present (ALL plots), use it; otherwise gray
+  if ("colour" %in% names(mapping)) {
+    p <- p +
+      geom_point(alpha = 0.3, size = 0.5) +
+      scale_colour_manual(values = c("#5B8DB8", "#C44E52"))
+  } else {
+    p <- p +
+      geom_point(alpha = 0.2, size = 0.5, color = "gray40")
+  }
+
+  p + theme_minimal() +
     theme(
       panel.grid = element_blank(),
       axis.text = element_blank(),
@@ -61,15 +71,43 @@ lower_scatter <- function(data, mapping, ...) {
     )
 }
 
-# diag_label: Diagonal - parameter names
+# Abbreviated parameter names for diagonal labels
+param_abbrevs <- c(
+  "cluster_shade" = "clu\nsha",
+  "cluster_prominence" = "clu\npro",
+  "diagonal_moment" = "dia\nmom",
+  "maximum_probability" = "max\npro",
+  "sum_energy" = "sum\nene",
+  "sum_entropy" = "sum\nent",
+  "sum_variance" = "sum\nvar",
+  "difference_energy" = "dif\nene",
+  "difference_entropy" = "dif\nent",
+  "entropy" = "ent",
+  "energy" = "ene",
+  "kappa" = "kap",
+  "correlation" = "cor",
+  "inertia" = "ine",
+  "inverse_different_moment" = "inv\ndif",
+  "db_mean" = "db",
+  "dm_mean" = "dm",
+  "dx_mean" = "dx",
+  "evaporation_duration" = "evap",
+  "EVAP" = "evap"
+)
+
+# diag_label: Diagonal - abbreviated parameter names
 diag_label <- function(data, mapping, ...) {
   var_name <- rlang::as_label(mapping$x)
-  display_name <- gsub("_", "\n", var_name)
+  display_name <- if (var_name %in% names(param_abbrevs)) {
+    param_abbrevs[[var_name]]
+  } else {
+    gsub("_", "\n", var_name)
+  }
 
   ggplot(data, mapping) +
     annotate("text", x = 0.5, y = 0.5,
              label = display_name,
-             size = 2.5, fontface = "bold", lineheight = 0.8) +
+             size = 8, fontface = "bold", lineheight = 0.8) +
     xlim(0, 1) + ylim(0, 1) +
     theme_void()
 }
@@ -77,18 +115,53 @@ diag_label <- function(data, mapping, ...) {
 
 #===== Shared plotting function ============================================
 
-make_corr_plot <- function(data, param_cols, title, output_path, size_cm = 40) {
+make_corr_plot <- function(data, param_cols, title, output_path,
+                           size_cm = 40, color_col = NULL,
+                           point_color = "gray40") {
 
   cat(sprintf("  Generating: %s (%d observations)...\n", title, nrow(data)))
 
-  df_ordered <- data[, param_cols]
+  # Create scatter function with captured point_color for this plot
+  local_scatter <- function(data, mapping, ...) {
+    p <- ggplot(data, mapping)
+    if ("colour" %in% names(mapping)) {
+      p <- p +
+        geom_point(alpha = 0.3, size = 0.5) +
+        scale_colour_manual(values = c("#5B8DB8", "#C44E52"))
+    } else {
+      p <- p +
+        geom_point(alpha = 0.3, size = 0.5, color = point_color)
+    }
+    p + theme_minimal() +
+      theme(
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()
+      )
+  }
 
-  plot_corr <- ggpairs(
-    df_ordered,
-    upper = list(continuous = upper_cor),
-    lower = list(continuous = lower_scatter),
-    diag = list(continuous = diag_label)
-  ) +
+  # Build ggpairs with optional color mapping for ALL plots
+  if (!is.null(color_col)) {
+    data[[color_col]] <- as.factor(data[[color_col]])
+    plot_corr <- ggpairs(
+      data,
+      columns = param_cols,
+      mapping = aes(colour = .data[[color_col]]),
+      upper = list(continuous = upper_cor),
+      lower = list(continuous = local_scatter),
+      diag = list(continuous = diag_label),
+      legend = NULL
+    )
+  } else {
+    plot_corr <- ggpairs(
+      data[, param_cols],
+      upper = list(continuous = upper_cor),
+      lower = list(continuous = local_scatter),
+      diag = list(continuous = diag_label)
+    )
+  }
+
+  plot_corr <- plot_corr +
     theme(
       plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
       strip.text = element_blank(),
@@ -179,11 +252,11 @@ hom2_params <- c(
   "EVAP"
 )
 
-# HOM2 subsets: ALL, LAB=1, LAB=2
+# HOM2 subsets: ALL (colored by LAB), LAB=1 (blue), LAB=2 (red)
 hom2_subsets <- list(
-  list(label = "ALL",   data = df_hom2),
-  list(label = "LAB_1", data = df_hom2 %>% filter(LAB == 1)),
-  list(label = "LAB_2", data = df_hom2 %>% filter(LAB == 2))
+  list(label = "ALL",   data = df_hom2, color_col = "LAB",  point_color = NULL),
+  list(label = "LAB_1", data = df_hom2 %>% filter(LAB == 1), color_col = NULL, point_color = "#5B8DB8"),
+  list(label = "LAB_2", data = df_hom2 %>% filter(LAB == 2), color_col = NULL, point_color = "#C44E52")
 )
 
 for (s in hom2_subsets) {
@@ -192,7 +265,9 @@ for (s in hom2_subsets) {
     param_cols = hom2_params,
     title = paste("Correlation Matrix: HOM2", s$label, "(Texture Parameters)"),
     output_path = file.path(output_folder,
-                            paste0("HOM2_texture_correlation_", s$label, ".png"))
+                            paste0("HOM2_texture_correlation_", s$label, ".png")),
+    color_col = s$color_col,
+    point_color = if (!is.null(s$point_color)) s$point_color else "gray40"
   )
 }
 
@@ -256,11 +331,11 @@ asps_params <- c(
   "evaporation_duration"
 )
 
-# ASPS subsets: ALL, AS, JZ
+# ASPS subsets: ALL (colored by experimenter), AS (blue), JZ (red)
 asps_subsets <- list(
-  list(label = "ALL", data = df_asps),
-  list(label = "AS",  data = df_asps %>% filter(experiment_name == "AS")),
-  list(label = "JZ",  data = df_asps %>% filter(experiment_name == "JZ"))
+  list(label = "ALL", data = df_asps, color_col = "experiment_name", point_color = NULL),
+  list(label = "AS",  data = df_asps %>% filter(experiment_name == "AS"), color_col = NULL, point_color = "#5B8DB8"),
+  list(label = "JZ",  data = df_asps %>% filter(experiment_name == "JZ"), color_col = NULL, point_color = "#C44E52")
 )
 
 for (s in asps_subsets) {
@@ -269,7 +344,9 @@ for (s in asps_subsets) {
     param_cols = asps_params,
     title = paste("Correlation Matrix: ASPS", s$label, "(Texture Parameters)"),
     output_path = file.path(output_folder,
-                            paste0("ASPS_texture_correlation_", s$label, ".png"))
+                            paste0("ASPS_texture_correlation_", s$label, ".png")),
+    color_col = s$color_col,
+    point_color = if (!is.null(s$point_color)) s$point_color else "gray40"
   )
 }
 
@@ -332,11 +409,11 @@ combined_params <- c(
   "evaporation_duration"
 )
 
-# Combined subsets: ALL, AS, JZ
+# Combined subsets: ALL (colored by experimenter), AS (blue), JZ (red)
 combined_subsets <- list(
-  list(label = "ALL", data = df_combined),
-  list(label = "AS",  data = df_combined %>% filter(experiment_name == "AS")),
-  list(label = "JZ",  data = df_combined %>% filter(experiment_name == "JZ"))
+  list(label = "ALL", data = df_combined, color_col = "experiment_name", point_color = NULL),
+  list(label = "AS",  data = df_combined %>% filter(experiment_name == "AS"), color_col = NULL, point_color = "#5B8DB8"),
+  list(label = "JZ",  data = df_combined %>% filter(experiment_name == "JZ"), color_col = NULL, point_color = "#C44E52")
 )
 
 for (s in combined_subsets) {
@@ -346,7 +423,9 @@ for (s in combined_subsets) {
     title = paste("Correlation Matrix: ASPS", s$label, "(Texture + Fractal)"),
     output_path = file.path(output_folder,
                             paste0("ASPS_texture_fractal_correlation_", s$label, ".png")),
-    size_cm = 50
+    size_cm = 50,
+    color_col = s$color_col,
+    point_color = if (!is.null(s$point_color)) s$point_color else "gray40"
   )
 }
 
